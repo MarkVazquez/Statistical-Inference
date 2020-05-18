@@ -1,0 +1,254 @@
+---
+title: "30 Day Analysis of Medicare-Heart Attacks"
+author: "Group 2"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r echo=FALSE}
+library(ggplot2)
+library(gridExtra)
+library(testequavar)
+```
+
+
+## INTRODUCTION: 
+The following project analyzes hospital outcome of measures with data given from Medicare website of the United States of America (US). It specifically analyzes TX and United States on outcomes of measures such as mortality rates from heart attacks and readmission rates from heart attacks within a 30 day period. Particular outcomes of measures are determined by using methods such as the bootstap percentile method and plotting using the quantile plot to analyze Texas mortality rates and readmission rates due to heart attack to determine the true mean. Methods also include Hypothesis Testing to make credible the difference in means between TX and US. Furthermore, permutation distribution to determine a precise result between the US and Texas mortality and readmission rates caused by heart attacks and using correlation hypothesis tests to check whether readmission to the hospital from a heart attack and death from a heart attack are in fact correlated. The project significant because reducing hospital readmissions—especially those that result from poor inpatient or outpatient care—has long been a health policy goal because it represents an opportunity to lower health care costs, improve quality, and increase patient satisfaction. 
+
+
+### Phase 1 : Confidence Interval for Mean Mortality and Readmission Rate in TX
+The classical t-test requires the data to come from a normally distributed population. 
+The quantile plot reveals non-normally, therefore we will use the bootstrap percentile method to construct a 95% confidence interval for the true mean 30-day mortality and readmission rate from heart attack in Texas. After careful analysis we conclude with 95% confident that the true mean for 30-day mortality and readmission rate in Texas lies within the intervals (15.59381, 15.91755) and (19.36474, 19.70520) respectively. The confidence interval for each statistic is highlighted in yellow on the respective histograms and the observed statistic is represented by the red dots. Given the confidence intervals, we are interested in comparing the 30-day mortality rate from heart attack in Texas versus the entire United States of America. 
+
+```{r, echo=FALSE}
+medicare <- read.csv("Hospital_Outcome_Of_Care_Measures.csv", stringsAsFactors = FALSE)
+#Subsetting data only for the state of Texas
+testF <- subset(medicare, subset = State == 'TX', drop = TRUE)
+#Extracting #30 day Death mortality rates from heart attack
+mort_heart <- testF$Hospital.30.Day.Death..Mortality..Rates.from.Heart.Attack
+#Extracting 30 day Readmission rates from heart attack
+readmiss_heart <- testF$Hospital.30.Day.Readmission.Rates.from.Heart.Attack
+#Take out NA values
+new_mort_heart <- subset(mort_heart, mort_heart != "Not Available")
+new_readmiss_heart <- subset(readmiss_heart, readmiss_heart != "Not Available")
+# Create dataframe for mortality and readmission rate
+TX_mort_heart <- data.frame( 'TX_mort_heart' = as.numeric(new_mort_heart))
+TX_readmiss_heart <- data.frame('TX_readmiss_heart' = as.numeric(new_readmiss_heart))
+```
+
+```{r, echo=FALSE}
+# Quantile plots for mortality and readmission
+p1 = ggplot(data = TX_mort_heart,aes(sample = TX_mort_heart))+
+    stat_qq(aes(color = "orange"),shape =1) + stat_qq_line() +scale_colour_identity()+
+  ggtitle('Mortality Rate Quantile Plot')
+
+p2 = ggplot(data = TX_readmiss_heart,aes(sample = TX_readmiss_heart))+
+  stat_qq(aes(color = "orange"),shape =1) + stat_qq_line() + scale_colour_identity()+
+  ggtitle('Readmission rate Quantile Plot')
+```
+
+```{r, echo=FALSE}
+#Mean for mortality rates of heart attack and readmission rates
+mort_observed <- mean(TX_mort_heart$TX_mort_heart)
+readmiss_observed <- mean(TX_readmiss_heart$TX_readmiss_heart)
+
+# Bootstrat for mortality rate
+N <- 10^4
+n <- length(TX_mort_heart$TX_mort_heart)
+boot.mort_heart <- numeric(N)#Setting bootstrap list 
+for (i in 1:N){
+  x <- sample(TX_mort_heart$TX_mort_heart, size = n, replace = T) 
+  boot.mort_heart[i]=mean(x)
+}
+m_quant <- quantile(boot.mort_heart, c(.05, .95)) 
+mort_boot <- data.frame('x' = boot.mort_heart) #dataframe for plot
+
+#Bootstrap for readmission rate
+n <- length(TX_readmiss_heart$TX_readmiss_heart)
+boot.readmiss_heart <- numeric(N)#Setting bootstrap list 
+for (i in 1:N){
+  x <- sample(TX_readmiss_heart$TX_readmiss_heart, size = n, replace = T)
+  boot.readmiss_heart[i]=mean(x)#storing mean of each bootstrap simulation
+}
+r_quant = quantile(boot.readmiss_heart, c(.05, .95)) 
+readm_boot <- data.frame('x' = boot.readmiss_heart) #dataframe for plot
+```
+
+```{r echo=FALSE, fig.height=3.5}
+# Boostrap Plots
+p3 = ggplot(aes(x = mort_boot$x), 
+                data = mort_boot)+
+  geom_histogram(fill = "cadetblue", color = 'black', binwidth = 0.02)+
+  geom_segment(aes(x = m_quant[1], y = 0, xend = m_quant[2], yend = 0), colour = "yellow")+
+  geom_point(aes(x= mort_observed , y=0), colour="red")+
+  ggtitle(" TX Heart Attack Mortality Rate") +
+  labs(y="Frequency", x = "Bootstrap Mortality Rate")
+
+p4 = ggplot(aes(x = readm_boot$x), 
+                data = readm_boot)+
+  geom_histogram(fill = "cadetblue", color = 'black', binwidth = 0.02)+
+  geom_segment(aes(x = r_quant[1], y = 0, xend = r_quant[2], yend = 0), colour = "yellow")+
+  geom_point(aes(x= readmiss_observed, y=0), colour="red")+
+  ggtitle(" TX Heart Attack Readmission Rate") +
+  labs(y=" Frequency", x = "Boostrap Readmission Rate")
+
+grid.arrange(p1, p2,p3,p4, nrow = 2)
+
+```
+
+### Phase 2 - Hypothesis Testing - US vs TX Mortality Rate
+Once again, a histogram and quantile plot of US mortality rate from heart attach reveal a slightly skewed distribution. To account for the non-symmetric nature of the data we utilized the permutation distribution of the difference of means to arrive to a more accurate result because the permutation test is robust for hypothesis testing and accounts for non-normal data. The permutation hypothesis test is useful to answer if our observed statistics is a common value if we assume that the null hypothesis is true and if the probability of getting this statistic due to chance is very small.
+
+H0- true mean for 30-day mortality rates from heart attack is the same for Texas and US.
+
+H1- true mean for 30-day mortality rates in US is less than for TX.
+
+Significance level = 5% is the highest probability we allow for a type I error.
+
+
+```{r, echo=FALSE}
+testUS <- subset(medicare, subset = Hospital.30.Day.Death..Mortality..Rates.from.Heart.Attack != 'Not Available', 
+                 drop = TRUE)
+US_mort <- as.numeric(testUS$Hospital.30.Day.Death..Mortality..Rates.from.Heart.Attack)
+US_mort <- data.frame('US_mort' = US_mort) # dataframe for plotting
+```
+
+```{r echo=FALSE}
+# Quantile plots for mortality and readmission
+p1 = ggplot(data = US_mort,aes(sample = US_mort))+
+    stat_qq(aes(color = "orange"),shape =1) + stat_qq_line() +scale_colour_identity()+
+  ggtitle(' US Mortality Rate Quantile Plot')
+
+p2 = ggplot(aes(x = US_mort), 
+                data = US_mort)+
+  geom_histogram(fill = "cadetblue", color = 'black', binwidth = 0.3)+
+  ggtitle(" US Heart Attack Mortality Rate") +
+  labs(y="Frequency", x = " US Mortality Rate")
+```
+
+```{r, echo=FALSE}
+# A negative number indicates that mean TX mortality 
+#rate is greater than Overall US mean mortality rate.
+observed_diff <- mean(US_mort$US_mort) - mean(TX_mort_heart$TX_mort_heart)
+paste('Observed difference',observed_diff)
+# Spread Test
+var_test = equa2vartest(US_mort$US_mort,TX_mort_heart$TX_mort_heart,0.05, 10000)
+var_test[1]
+diff_means = numeric(N) 
+for(i in 1:N){
+  index <- sample(length(US_mort$US_mort), 
+                  size = length(TX_mort_heart$TX_mort_heart), replace = FALSE)
+  diff_means[i] <- mean(US_mort$US_mort[-index]) - mean(US_mort$US_mort[index])
+}
+diff_means <- data.frame('diff_means' = diff_means)
+
+p_value <-  (sum(diff_means$diff_means <= observed_diff) +1)/(N+1) # P-value left tail test
+paste('Pvalue',p_value)
+```
+
+```{r echo=FALSE}
+# Results
+p3 = ggplot(aes(x = diff_means), 
+                data = diff_means)+
+  geom_histogram(fill = "cadetblue", color = 'black', binwidth = 0.02)+
+  geom_point(aes(x= observed_diff, y=0), colour="red")+
+  ggtitle(" Difference of US & TX  Mean Mortality Rate") +
+  labs(y=" Frequency", x = " Permutation of Differences")
+
+grid.arrange(p1, p2,p3, nrow = 2)
+
+```
+Given the histogram for difference of means, we see clearly that the probability for getting the observed statistics due to chance is very small. In other words, the p-value of 0.002 is smaller than our significance level, 0.05; therefore, we reject the null and conclude that in fact the Texas mean 30-day mortality rate from heart attack is greater than US mean 30-day mortality rate. Our result is statistically significant.
+
+### Phase 3 - Correlation Hypothesis Test
+Given the nature of the goal of outcome of care measurements, we ask the question of whether the number of readmitted patients is correlated with number of patient deaths of a specific treatment. In other words, are the two variables in question independent of each other? 
+H0- correlation 0.
+H1 - x and y are correlated.
+
+After analyzing the Texas data and testing the correlation between number of death and readmissions, we obtained an extremely small p-value, essentially zero. The probability of getting the observed correlation by change is 0.00019998. At 5% significance level we reject the null hypothesis and conclude that there is a real correlation between number of patients readmitted from heart attack and number of patients that were deceased from heart attacked.
+
+```{r, echo = FALSE}
+test2 <- medicare[(medicare$State == 'TX') & (medicare$Number.of.Patients...Hospital.30.Day.Readmission.Rates.from.Heart.Attack!='Not Available') & (medicare$Number.of.Patients...Hospital.30.Day.Death..Mortality..Rates.from.Heart.Attack != 'Not Available'),]
+```
+
+```{r, out.height= "30%", echo=FALSE}
+X <- as.numeric(test2$Number.of.Patients...Hospital.30.Day.Readmission.Rates.from.Heart.Attack)
+Y <- as.numeric(test2$Number.of.Patients...Hospital.30.Day.Death..Mortality..Rates.from.Heart.Attack)
+
+observed.cor <- cor(X,Y)
+paste('Observed correlation')
+observed.cor
+
+n <- length(X)
+cor.perm <- numeric(N)
+for(i in 1:N){
+index <- sample(n,replace = FALSE)
+mort_readmiss.perm <- X[index]
+cor.perm[i] <- cor(mort_readmiss.perm, Y)
+}
+a <- (sum(observed.cor <= cor.perm) +1)
+b <- (sum(observed.cor >= cor.perm) +1)
+p_value <- (min(c(a,b)) / (N+1) ) * 2
+paste('pvalue')
+p_value
+```
+
+```{r, echo = FALSE, out.width= "70%", fig.height=4}
+cor.perm <- data.frame('cor.perm' = cor.perm) # for plots
+
+
+p1 = ggplot(aes(x = cor.perm), 
+                data = cor.perm)+
+  geom_histogram(fill = "cadetblue", color = 'black', binwidth = 0.02)+
+  geom_point(aes(x= observed.cor, y=0), colour="red")+
+  ggtitle('Permutation distribution') +
+  labs(y=" Frequency", x = " Correlation")
+
+
+p2 = ggplot(aes(x = X , y = Y),
+       data = test2)+
+  geom_point( fill = I('#F79420'), color = I('black'), shape = 21)+
+  stat_smooth(method = 'lm')+
+  ggtitle('Predictor vs Response ', subtitle = "Regression line") +
+  labs(y=" Number of Patients Death", x = " Number of Patients Readmitted")
+
+grid.arrange(p1, p2, nrow = 1)
+                     
+```
+
+### Phase 4 - Regression
+```{r, fig.height=4, echo=FALSE}
+m1 <- lm(Y ~ X,
+         data = test2)
+#Diagnostics:Independence of Residuals? constant variance?
+plot(m1$fitted.values, rstudent(m1), ylab = "residuals", xlab = 'fitted values')
+grid()
+abline(h = 0)
+lines(smooth.spline(m1$fitted.values, rstudent(m1), df = 3), col = "blue")
+```
+
+```{r out.height= "50%", echo=FALSE}
+#Diagnostics: Normality of residuals?
+ggplot(data = m1 ,aes(sample = rstudent(m1)))+
+    stat_qq(aes(color = "orange"),shape =1) + stat_qq_line() +scale_colour_identity()+
+  ggtitle('Normal Quantile Plot Residuals')
+
+```
+
+The residuals are non-normal and do not have constant variance.Furthermore the residual plot reveals a non-random shape which may suggest that a linear model is not appropriate for this instance. This suggests a need for further investigation or additional data. Meanwhile, renders the models unreliable to inform about the significance of the estimates which is a method that assumes that the residuals are normally distributed.  For testing we may bootstrap to obtain a better confidance interval for the estimates and prediction for a specific predictor value. However we are still able to use the model to make predictions.
+
+# Conclusion:
+Outcome of measures is crucial for clinical practices. Heart disease is the leading cause of death in the United States. It is imparitive to reduce readmission rates in order to provide lower health care costs and increase the overall health of society. Moreover, TX and the US was the prime focus of this analysis. Phase I proceeded with a visualization of the normality of the original data. Thus, we concluded that it is best to perform a bootstrap for the true mean 30-day mortalitly rate and readmission rate for the state of TX. With this analysis, we then proceeded to phase II-Hypothesis testing. Hypothesis testing led us to concluded that in fact, United States has a lower 30-day mortality rate than TX. This led us to further analyze Tx data. In phase III, we asked the question, "Is there a correlation between the number of readmission and deceased from heart attacks?" Hence, a Correlation Hypothesis Test was performed. Thus it became evident that there was a real correlation. Furthermore, we proceeded with Phase IV-Regression. The regressor in this case did not meet all assumptions of normal residuals nor constant variance. However, the model may still be used to make predictions between death mortality and readmission rates from heart attacks. In conclusion, there is high correlation between number of patients deceased and their readmission. Thus, a comparison between states may hold key to determine discrepancies between the data.
+
+
+# References:
+
+Blackwell, Willey. (2019). Why measuring outcomes is important in health care. J Vet Intern Med, Pages 356-362, https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6430924/
+
+Chihara, L., & Hesterberg, T. (2019).FMathematical statistics with resampling and R. Hoboken: John Wiley & Sons.
+
+Tinker, Ann. (2018). The Top Seven Healthcare Outcome Measures and Three Measurement Essentials. Health Catalyst, https://www.healthcatalyst.com/insights/top-7-healthcare-outcome-measures
+
+Dataset: https://data.medicare.gov/Hospital-Compare/Hospital-Outcome-Of-Care-Measures/47nj-iqgs/data
